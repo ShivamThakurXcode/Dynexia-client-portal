@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,52 +13,103 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { FileUploader } from "@/components/file-uploader"
 import { MessageList } from "@/components/message-list"
 import { ArrowLeft, Calendar, Clock, FileText, Users } from "lucide-react"
+import { getProjectById } from "@/lib/actions/projects"
+import { uploadDocument } from "@/lib/actions/documents"
+import { useToast } from "@/components/ui/use-toast"
+import { formatDate, getStatusColor } from "@/lib/utils"
 
 export default function ProjectDetailsPage({ params }: { params: { id: string } }) {
   const [activeTab, setActiveTab] = useState("overview")
+  const [project, setProject] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
 
-  // Sample project data
-  const project = {
-    id: params.id,
-    name: "Website Redesign",
-    status: "In Progress",
-    dueDate: "2023-12-15",
-    startDate: "2023-10-01",
-    progress: 65,
-    description:
-      "Complete overhaul of company website with new branding, improved user experience, and modern design elements.",
-    client: "Acme Corporation",
-    team: ["John Doe", "Jane Smith", "Robert Johnson"],
-    milestones: [
-      { name: "Planning & Research", status: "Completed", date: "2023-10-15" },
-      { name: "Wireframing", status: "Completed", date: "2023-10-30" },
-      { name: "Design", status: "In Progress", date: "2023-11-20" },
-      { name: "Development", status: "Not Started", date: "2023-12-05" },
-      { name: "Testing & Launch", status: "Not Started", date: "2023-12-15" },
-    ],
+  useEffect(() => {
+    const fetchProject = async () => {
+      try {
+        const result = await getProjectById(params.id)
+        if (result?.error) {
+          setError(result.error)
+        } else if (result?.project) {
+          setProject(result.project)
+        }
+      } catch (error) {
+        console.error("Error fetching project:", error)
+        setError("Failed to load project details")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchProject()
+  }, [params.id])
+
+  const handleFileUpload = async (files: File[]) => {
+    if (files.length === 0) return
+
+    try {
+      for (const file of files) {
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("projectId", params.id)
+        formData.append("description", "Uploaded from project details page")
+        formData.append("documentType", "project-file")
+
+        const result = await uploadDocument(formData)
+
+        if (result?.error) {
+          toast({
+            title: "Error",
+            description: result.error,
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Success",
+            description: `${file.name} uploaded successfully`,
+          })
+
+          // Refresh project data to show new document
+          const updatedProject = await getProjectById(params.id)
+          if (updatedProject?.project) {
+            setProject(updatedProject.project)
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error uploading file:", error)
+      toast({
+        title: "Error",
+        description: "Failed to upload file",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
+  if (error || !project) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <h2 className="text-xl font-bold mb-4">Error</h2>
+        <p className="text-muted-foreground mb-6">{error || "Failed to load project"}</p>
+        <Button asChild>
+          <Link href="/projects">Back to Projects</Link>
+        </Button>
+      </div>
+    )
   }
 
   // Format dates
-  const formattedDueDate = new Date(project.dueDate).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  })
-
-  const formattedStartDate = new Date(project.startDate).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  })
-
-  const statusColor = {
-    Completed: "bg-green-500",
-    "In Progress": "bg-blue-500",
-    Planning: "bg-amber-500",
-    Review: "bg-purple-500",
-    "On Hold": "bg-gray-500",
-    "Not Started": "bg-gray-400",
-  }
+  const formattedDueDate = formatDate(project.dueDate)
+  const formattedStartDate = formatDate(project.startDate)
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -78,9 +129,7 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
               <div className="flex justify-between items-center">
                 <CardTitle>Project Details</CardTitle>
                 <Badge variant="outline">
-                  <span
-                    className={`mr-1.5 h-2 w-2 rounded-full ${statusColor[project.status as keyof typeof statusColor]}`}
-                  />
+                  <span className={`mr-1.5 h-2 w-2 rounded-full ${getStatusColor(project.status)}`} />
                   {project.status}
                 </Badge>
               </div>
@@ -118,17 +167,22 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
                 <div>
                   <h3 className="font-medium mb-2">Team Members</h3>
                   <div className="flex items-center space-x-2">
-                    {project.team.map((member, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground text-xs font-medium"
-                      >
-                        {member
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")}
-                      </div>
-                    ))}
+                    {project.team && project.team.length > 0 ? (
+                      project.team.map((member: any) => (
+                        <div
+                          key={member.id}
+                          className="flex items-center justify-center h-8 w-8 rounded-full bg-primary text-primary-foreground text-xs font-medium"
+                          title={member.user.name}
+                        >
+                          {member.user.name
+                            .split(" ")
+                            .map((n: string) => n[0])
+                            .join("")}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No team members assigned yet</p>
+                    )}
                     <div className="flex items-center justify-center h-8 w-8 rounded-full border border-dashed border-muted-foreground text-muted-foreground">
                       <Users className="h-4 w-4" />
                     </div>
@@ -145,25 +199,27 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {project.milestones.map((milestone, index) => (
-                  <div key={index} className="relative pl-6 pb-4 last:pb-0">
-                    <div
-                      className={`absolute left-0 top-1.5 h-3 w-3 rounded-full ${statusColor[milestone.status as keyof typeof statusColor]}`}
-                    />
-                    {index < project.milestones.length - 1 && (
-                      <div className="absolute left-1.5 top-4 bottom-0 w-px bg-border" />
-                    )}
-                    <div>
-                      <p className="font-medium">{milestone.name}</p>
-                      <div className="flex justify-between text-sm text-muted-foreground">
-                        <span>{milestone.status}</span>
-                        <span>
-                          {new Date(milestone.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </span>
+                {project.milestones && project.milestones.length > 0 ? (
+                  project.milestones.map((milestone: any, index: number) => (
+                    <div key={milestone.id} className="relative pl-6 pb-4 last:pb-0">
+                      <div
+                        className={`absolute left-0 top-1.5 h-3 w-3 rounded-full ${getStatusColor(milestone.status)}`}
+                      />
+                      {index < project.milestones.length - 1 && (
+                        <div className="absolute left-1.5 top-4 bottom-0 w-px bg-border" />
+                      )}
+                      <div>
+                        <p className="font-medium">{milestone.name}</p>
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>{milestone.status}</span>
+                          <span>{formatDate(milestone.date)}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No milestones defined yet</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -228,53 +284,35 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
               <CardContent className="space-y-6">
                 <div>
                   <h3 className="font-medium mb-4">Upload Files</h3>
-                  <FileUploader />
+                  <FileUploader onFilesSelected={handleFileUpload} />
                 </div>
 
                 <Separator />
 
                 <div>
                   <h3 className="font-medium mb-4">Project Files</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 border rounded-md">
-                      <div className="flex items-center">
-                        <FileText className="h-5 w-5 mr-3 text-primary" />
-                        <div>
-                          <p className="font-medium">Website_Wireframes.pdf</p>
-                          <p className="text-xs text-muted-foreground">2.4 MB • Uploaded 2 weeks ago</p>
+                  {project.documents && project.documents.length > 0 ? (
+                    <div className="space-y-3">
+                      {project.documents.map((document: any) => (
+                        <div key={document.id} className="flex items-center justify-between p-3 border rounded-md">
+                          <div className="flex items-center">
+                            <FileText className="h-5 w-5 mr-3 text-primary" />
+                            <div>
+                              <p className="font-medium">{document.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatFileSize(document.size)} • Uploaded {formatDate(document.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => window.open(document.url, "_blank")}>
+                            Download
+                          </Button>
                         </div>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        Download
-                      </Button>
+                      ))}
                     </div>
-
-                    <div className="flex items-center justify-between p-3 border rounded-md">
-                      <div className="flex items-center">
-                        <FileText className="h-5 w-5 mr-3 text-primary" />
-                        <div>
-                          <p className="font-medium">Brand_Guidelines.pdf</p>
-                          <p className="text-xs text-muted-foreground">3.8 MB • Uploaded 1 month ago</p>
-                        </div>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        Download
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 border rounded-md">
-                      <div className="flex items-center">
-                        <FileText className="h-5 w-5 mr-3 text-primary" />
-                        <div>
-                          <p className="font-medium">Homepage_Design.png</p>
-                          <p className="text-xs text-muted-foreground">1.2 MB • Uploaded 1 week ago</p>
-                        </div>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        Download
-                      </Button>
-                    </div>
-                  </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No files uploaded yet</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -344,4 +382,12 @@ export default function ProjectDetailsPage({ params }: { params: { id: string } 
       </main>
     </div>
   )
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 Bytes"
+  const k = 1024
+  const sizes = ["Bytes", "KB", "MB", "GB"]
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
 }

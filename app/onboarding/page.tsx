@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { DashboardHeader } from "@/components/dashboard-header"
+import { submitOnboarding } from "@/lib/actions/onboarding"
 
 export default function OnboardingPage() {
   const router = useRouter()
@@ -70,19 +71,45 @@ export default function OnboardingPage() {
     setStep((prev) => prev - 1)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate form submission
-    setTimeout(() => {
-      setIsSubmitting(false)
+    try {
+      const formDataToSend = new FormData()
+
+      // Add all form fields to FormData
+      Object.entries(formData).forEach(([key, value]) => {
+        formDataToSend.append(key, value)
+      })
+
+      const result = await submitOnboarding(formDataToSend)
+
+      if (result?.error) {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        })
+        setIsSubmitting(false)
+        return
+      }
+
       toast({
         title: "Onboarding complete",
         description: "Your information has been submitted successfully",
       })
+
       router.push("/dashboard")
-    }, 2000)
+    } catch (error) {
+      console.error("Onboarding error:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred while submitting your information",
+        variant: "destructive",
+      })
+      setIsSubmitting(false)
+    }
   }
 
   return (

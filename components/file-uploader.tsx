@@ -7,16 +7,77 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Upload, X } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { formatFileSize } from "@/lib/utils"
 
-export function FileUploader() {
+interface FileUploaderProps {
+  onFilesSelected?: (files: File[]) => void
+  maxFiles?: number
+  maxSize?: number // in bytes
+  acceptedTypes?: string
+}
+
+export function FileUploader({
+  onFilesSelected,
+  maxFiles = 10,
+  maxSize = 10 * 1024 * 1024, // 10MB default
+  acceptedTypes = ".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip",
+}: FileUploaderProps) {
   const { toast } = useToast()
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
 
+  const validateFile = (file: File) => {
+    // Check file size
+    if (file.size > maxSize) {
+      toast({
+        title: "File too large",
+        description: `${file.name} exceeds the maximum file size of ${formatFileSize(maxSize)}`,
+        variant: "destructive",
+      })
+      return false
+    }
+
+    // Check file type if acceptedTypes is provided
+    if (acceptedTypes && acceptedTypes !== "*") {
+      const fileExtension = `.${file.name.split(".").pop()?.toLowerCase()}`
+      const acceptedTypesList = acceptedTypes.split(",")
+
+      if (
+        !acceptedTypesList.some(
+          (type) => type.trim() === fileExtension || type.trim() === file.type || type.trim() === "*",
+        )
+      ) {
+        toast({
+          title: "Invalid file type",
+          description: `${file.name} is not an accepted file type`,
+          variant: "destructive",
+        })
+        return false
+      }
+    }
+
+    return true
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files)
-      setFiles((prev) => [...prev, ...newFiles])
+      const newFiles = Array.from(e.target.files).filter(validateFile)
+
+      if (files.length + newFiles.length > maxFiles) {
+        toast({
+          title: "Too many files",
+          description: `You can only upload a maximum of ${maxFiles} files`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const updatedFiles = [...files, ...newFiles]
+      setFiles(updatedFiles)
+
+      if (onFilesSelected) {
+        onFilesSelected(updatedFiles)
+      }
     }
   }
 
@@ -35,38 +96,33 @@ export function FileUploader() {
     setIsDragging(false)
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const newFiles = Array.from(e.dataTransfer.files)
-      setFiles((prev) => [...prev, ...newFiles])
+      const newFiles = Array.from(e.dataTransfer.files).filter(validateFile)
+
+      if (files.length + newFiles.length > maxFiles) {
+        toast({
+          title: "Too many files",
+          description: `You can only upload a maximum of ${maxFiles} files`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const updatedFiles = [...files, ...newFiles]
+      setFiles(updatedFiles)
+
+      if (onFilesSelected) {
+        onFilesSelected(updatedFiles)
+      }
     }
   }
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index))
-  }
+    const updatedFiles = files.filter((_, i) => i !== index)
+    setFiles(updatedFiles)
 
-  const uploadFiles = () => {
-    if (files.length === 0) {
-      toast({
-        title: "No files selected",
-        description: "Please select files to upload",
-        variant: "destructive",
-      })
-      return
+    if (onFilesSelected) {
+      onFilesSelected(updatedFiles)
     }
-
-    // Simulate upload
-    toast({
-      title: "Upload started",
-      description: `Uploading ${files.length} files...`,
-    })
-
-    setTimeout(() => {
-      toast({
-        title: "Upload complete",
-        description: `Successfully uploaded ${files.length} files`,
-      })
-      setFiles([])
-    }, 2000)
   }
 
   return (
@@ -82,14 +138,21 @@ export function FileUploader() {
         <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
         <h3 className="font-medium mb-1">Drag and drop files here</h3>
         <p className="text-sm text-muted-foreground mb-4">or click to browse from your computer</p>
-        <Input type="file" multiple className="hidden" id="file-upload" onChange={handleFileChange} />
+        <Input
+          type="file"
+          multiple
+          className="hidden"
+          id="file-upload"
+          onChange={handleFileChange}
+          accept={acceptedTypes}
+        />
         <Button variant="outline" asChild>
           <label htmlFor="file-upload" className="cursor-pointer">
             Browse Files
           </label>
         </Button>
         <p className="text-xs text-muted-foreground mt-4">
-          Supported file types: PDF, DOCX, XLSX, JPG, PNG, ZIP (Max 10MB)
+          Supported file types: PDF, DOCX, XLSX, JPG, PNG, ZIP (Max {formatFileSize(maxSize)})
         </p>
       </div>
 
@@ -97,9 +160,6 @@ export function FileUploader() {
         <div className="space-y-3">
           <div className="flex justify-between items-center">
             <h3 className="font-medium">Selected Files ({files.length})</h3>
-            <Button variant="outline" size="sm" onClick={uploadFiles}>
-              Upload All
-            </Button>
           </div>
           <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
             {files.map((file, index) => (
@@ -123,14 +183,6 @@ export function FileUploader() {
       )}
     </div>
   )
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return "0 Bytes"
-  const k = 1024
-  const sizes = ["Bytes", "KB", "MB", "GB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
 }
 
 function FileIcon({ fileType }: { fileType: string }) {

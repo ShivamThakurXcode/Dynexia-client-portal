@@ -4,34 +4,24 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { ArrowRight } from "lucide-react"
+import { formatDate, getStatusColor } from "@/lib/utils"
 
 interface ProjectCardProps {
   project: {
     id: string
     name: string
     status: string
-    dueDate: string
+    dueDate: Date
     progress: number
     description: string
   }
 }
 
 export function ProjectCard({ project }: ProjectCardProps) {
-  const statusColor =
-    {
-      Completed: "bg-green-500",
-      "In Progress": "bg-blue-500",
-      Planning: "bg-amber-500",
-      Review: "bg-purple-500",
-      "On Hold": "bg-gray-500",
-    }[project.status] || "bg-gray-500"
+  const statusColor = getStatusColor(project.status)
 
   // Format date
-  const formattedDate = new Date(project.dueDate).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })
+  const formattedDate = formatDate(project.dueDate.toString())
 
   return (
     <Card className="gradient-border overflow-hidden">

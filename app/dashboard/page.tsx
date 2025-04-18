@@ -7,80 +7,46 @@ import { ArrowRight, Bell, Clock, FileText, MessageSquare } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { ProjectCard } from "@/components/project-card"
 import { NotificationCard } from "@/components/notification-card"
+import { getProjects } from "@/lib/actions/projects"
+import { getMessages } from "@/lib/actions/messages"
+import { getDocuments } from "@/lib/actions/documents"
+import { formatDate } from "@/lib/utils"
 
-export default function DashboardPage() {
-  // Sample data
-  const projects = [
-    {
-      id: "1",
-      name: "Website Redesign",
-      status: "In Progress",
-      dueDate: "2023-12-15",
-      progress: 65,
-      description: "Complete overhaul of company website with new branding",
-    },
-    {
-      id: "2",
-      name: "Mobile App Development",
-      status: "Planning",
-      dueDate: "2024-02-28",
-      progress: 20,
-      description: "iOS and Android app for customer engagement",
-    },
-    {
-      id: "3",
-      name: "Brand Identity",
-      status: "Review",
-      dueDate: "2023-11-30",
-      progress: 90,
-      description: "New logo, color palette, and brand guidelines",
-    },
-  ]
+export default async function DashboardPage() {
+  const { projects = [], error: projectsError } = (await getProjects()) || {}
+  const { messages = [], error: messagesError } = (await getMessages()) || {}
+  const { documents = [], error: documentsError } = (await getDocuments()) || {}
 
+  // Create notifications from recent activities
   const notifications = [
-    {
-      id: "1",
+    ...messages.slice(0, 3).map((message) => ({
+      id: message.id,
       title: "New message received",
-      description: "John commented on Website Redesign project",
-      time: "2 hours ago",
+      description: `${message.sender.name} sent a message: ${message.content.substring(0, 30)}${message.content.length > 30 ? "..." : ""}`,
+      time: formatDate(message.createdAt.toString()),
       icon: MessageSquare,
-    },
-    {
-      id: "2",
+    })),
+    ...documents.slice(0, 2).map((document) => ({
+      id: document.id,
       title: "Document uploaded",
-      description: "New wireframes added to Mobile App project",
-      time: "Yesterday",
+      description: `${document.name} was uploaded to ${document.project?.name || "your documents"}`,
+      time: formatDate(document.createdAt.toString()),
       icon: FileText,
-    },
-    {
-      id: "3",
-      title: "Deadline approaching",
-      description: "Brand Identity project due in 3 days",
-      time: "Yesterday",
-      icon: Clock,
-    },
+    })),
   ]
 
-  const upcomingTasks = [
-    {
-      id: "1",
-      title: "Review homepage design",
-      project: "Website Redesign",
-      dueDate: "Tomorrow",
-    },
-    {
-      id: "2",
-      title: "Approve logo concepts",
-      project: "Brand Identity",
-      dueDate: "Nov 28",
-    },
-    {
-      id: "3",
-      title: "Provide feedback on wireframes",
-      project: "Mobile App Development",
-      dueDate: "Dec 5",
-    },
-  ]
+  // Get upcoming tasks from project milestones
+  const upcomingTasks = projects
+    .flatMap((project) =>
+      project.milestones?.map((milestone) => ({
+        id: milestone.id,
+        title: milestone.name,
+        project: project.name,
+        dueDate: formatDate(milestone.date.toString()),
+      })),
+    )
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+    .slice(0, 3)
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -99,9 +65,13 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="pb-2">
               <div className="space-y-4">
-                {notifications.map((notification) => (
-                  <NotificationCard key={notification.id} notification={notification} />
-                ))}
+                {notifications.length > 0 ? (
+                  notifications.map((notification) => (
+                    <NotificationCard key={notification.id} notification={notification} />
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No notifications yet</p>
+                )}
               </div>
             </CardContent>
             <CardFooter>
@@ -126,15 +96,19 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="pb-2">
               <div className="space-y-4">
-                {upcomingTasks.map((task) => (
-                  <div key={task.id} className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium">{task.title}</p>
-                      <p className="text-sm text-muted-foreground">{task.project}</p>
+                {upcomingTasks.length > 0 ? (
+                  upcomingTasks.map((task) => (
+                    <div key={task.id} className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{task.title}</p>
+                        <p className="text-sm text-muted-foreground">{task.project}</p>
+                      </div>
+                      <Badge variant="outline">{task.dueDate}</Badge>
                     </div>
-                    <Badge variant="outline">{task.dueDate}</Badge>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No upcoming tasks</p>
+                )}
               </div>
             </CardContent>
             <CardFooter>
@@ -156,7 +130,7 @@ export default function DashboardPage() {
               <Button className="justify-start" asChild>
                 <Link href="/projects/new">
                   <FileText className="mr-2 h-4 w-4" />
-                  View Project Details
+                  Create New Project
                 </Link>
               </Button>
               <Button className="justify-start" variant="outline" asChild>
@@ -183,24 +157,45 @@ export default function DashboardPage() {
           </TabsList>
           <TabsContent value="active" className="mt-6">
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {projects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
-              ))}
+              {projects.filter((p) => p.status !== "Completed").length > 0 ? (
+                projects
+                  .filter((p) => p.status !== "Completed")
+                  .map((project) => <ProjectCard key={project.id} project={project} />)
+              ) : (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-muted-foreground">No active projects yet.</p>
+                  <Button variant="outline" className="mt-4" asChild>
+                    <Link href="/projects/new">Create a new project</Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </TabsContent>
           <TabsContent value="completed" className="mt-6">
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-muted-foreground">No completed projects yet.</p>
-              <Button variant="outline" className="mt-4" asChild>
-                <Link href="/projects">View all projects</Link>
-              </Button>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {projects.filter((p) => p.status === "Completed").length > 0 ? (
+                projects
+                  .filter((p) => p.status === "Completed")
+                  .map((project) => <ProjectCard key={project.id} project={project} />)
+              ) : (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-muted-foreground">No completed projects yet.</p>
+                </div>
+              )}
             </div>
           </TabsContent>
           <TabsContent value="all" className="mt-6">
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {projects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
-              ))}
+              {projects.length > 0 ? (
+                projects.map((project) => <ProjectCard key={project.id} project={project} />)
+              ) : (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-muted-foreground">No projects found.</p>
+                  <Button variant="outline" className="mt-4" asChild>
+                    <Link href="/projects/new">Create your first project</Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>

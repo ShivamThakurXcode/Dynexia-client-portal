@@ -5,31 +5,94 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/use-toast"
+import { registerUser } from "@/lib/actions/auth"
 
 export default function RegisterPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  })
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
 
-    // Simulate registration
-    setTimeout(() => {
+    if (formData.password !== formData.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      })
       setIsLoading(false)
+      return
+    }
+
+    try {
+      const formDataToSend = new FormData()
+      formDataToSend.append("name", `${formData.firstName} ${formData.lastName}`)
+      formDataToSend.append("email", formData.email)
+      formDataToSend.append("password", formData.password)
+
+      const result = await registerUser(formDataToSend)
+
+      if (result?.error) {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        })
+        setIsLoading(false)
+        return
+      }
+
       toast({
         title: "Registration successful",
         description: "Your account has been created",
       })
+
       router.push("/onboarding")
-    }, 1500)
+    } catch (error) {
+      console.error("Registration error:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred during registration",
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
+  }
+
+  const handleGoogleSignUp = async () => {
+    setIsLoading(true)
+    try {
+      await signIn("google", { callbackUrl: "/onboarding" })
+    } catch (error) {
+      console.error("Google sign up error:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred during Google sign up",
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -52,24 +115,46 @@ export default function RegisterPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">First name</Label>
-                  <Input id="firstName" required />
+                  <Input id="firstName" name="firstName" value={formData.firstName} onChange={handleChange} required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">Last name</Label>
-                  <Input id="lastName" required />
+                  <Input id="lastName" name="lastName" value={formData.lastName} onChange={handleChange} required />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="name@example.com" required />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" required />
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input id="confirmPassword" type="password" required />
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  required
+                />
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Creating account..." : "Create Account"}
@@ -80,16 +165,7 @@ export default function RegisterPage() {
               <span className="mx-2 text-xs text-muted-foreground">OR CONTINUE WITH</span>
               <Separator className="flex-1" />
             </div>
-            <Button
-              variant="outline"
-              className="mt-4 w-full"
-              onClick={() => {
-                toast({
-                  title: "Google Sign Up",
-                  description: "This would connect to Google Auth in production",
-                })
-              }}
-            >
+            <Button variant="outline" className="mt-4 w-full" onClick={handleGoogleSignUp} disabled={isLoading}>
               <svg
                 className="mr-2 h-4 w-4"
                 xmlns="http://www.w3.org/2000/svg"

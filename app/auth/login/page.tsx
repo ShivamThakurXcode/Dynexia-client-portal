@@ -4,7 +4,8 @@ import type React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -14,22 +15,71 @@ import { useToast } from "@/components/ui/use-toast"
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  })
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsLoading(true)
 
-    // Simulate login
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      const result = await signIn("credentials", {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        toast({
+          title: "Error",
+          description: "Invalid email or password",
+          variant: "destructive",
+        })
+        setIsLoading(false)
+        return
+      }
+
       toast({
         title: "Login successful",
         description: "Welcome back to Dynexia Client Portal",
       })
-      router.push("/dashboard")
-    }, 1500)
+
+      router.push(callbackUrl)
+    } catch (error) {
+      console.error("Login error:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred during login",
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true)
+    try {
+      await signIn("google", { callbackUrl })
+    } catch (error) {
+      console.error("Google sign in error:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred during Google sign in",
+        variant: "destructive",
+      })
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -51,7 +101,15 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="name@example.com" required />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -60,7 +118,14 @@ export default function LoginPage() {
                     Forgot password?
                   </Link>
                 </div>
-                <Input id="password" type="password" required />
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                />
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Signing in..." : "Sign In"}
@@ -71,16 +136,7 @@ export default function LoginPage() {
               <span className="mx-2 text-xs text-muted-foreground">OR CONTINUE WITH</span>
               <Separator className="flex-1" />
             </div>
-            <Button
-              variant="outline"
-              className="mt-4 w-full"
-              onClick={() => {
-                toast({
-                  title: "Google Sign In",
-                  description: "This would connect to Google Auth in production",
-                })
-              }}
-            >
+            <Button variant="outline" className="mt-4 w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
               <svg
                 className="mr-2 h-4 w-4"
                 xmlns="http://www.w3.org/2000/svg"
